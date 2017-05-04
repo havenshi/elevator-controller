@@ -116,7 +116,7 @@ ASSIGN
     esac;
 
 ---------------------------------------------------------------------------------------------------------------------------------------------------------------
--- 4.CONTROLLER                                                          
+-- 6.CONTROLLER                                                          
 
 -- The controller sends inside and outside floor button reset command, door reset button, move command and door movement command to elevator cabin.
 -- It includes all the the attributes(variables) of the five classes insidebutton, outsidebutton, doorbutton, carbin and door. 
@@ -137,7 +137,7 @@ VAR
     door_cmd : {open, close, none};
     
 
--- 4.1Inreset_cmd
+-- 6.1Inreset_cmd
 
 -- Reset command obeys logical sequence. Since it's command from controller, there's no initial status.
 -- After one button is pressed, the cabin arrives at the certain floor and the door is open, then the button will be reset.
@@ -147,7 +147,7 @@ ASSIGN
     inreset_cmd2 := (inpressed_2 & floor = 2 & doorstatus = open);
     inreset_cmd3 := (inpressed_3 & floor = 3 & doorstatus = open);
 
--- 4.2Outreset_cmd
+-- 6.2Outreset_cmd
 
 -- Reset command obeys logical sequence. Since it's command from controller, there's no initial status.
 -- After one button is pressed, the cabin arrives at the certain floor(not sure which floor the elevator will be finally on when the command is up from floor 1
@@ -159,7 +159,7 @@ ASSIGN
     outreset_cmdd2 := (outpressed_d2 & floor = 1 & doorstatus = open);
     outreset_cmdd3 := (outpressed_d3 & (floor = 1 | floor = 2) & doorstatus = open);
 
--- 4.3Doorreset_cmd
+-- 6.3Doorreset_cmd
 
 -- Reset command obeys logical sequence. Since it's command from controller, there's no initial status.
 -- After one button is pressed, the door is open, then the button will be reset.
@@ -168,7 +168,7 @@ ASSIGN
     doorreset_cmdo := (doorpressed_o & doorstatus = open);
     doorreset_cmdc := (doorpressed_c & doorstatus = closed);
 
--- 4.4Move_cmd
+-- 6.4Move_cmd
 
 -- It is the most complex command generated from controller. Move command determined by pending request and the last movement of the cabin. 
 -- We assume if the pending request as pending_here, pending_up and pending_down is related with the current floor and which floor pressed by user either
@@ -231,7 +231,7 @@ ASSIGN
     esac;
 
 
--- 4.5Door_cmd
+-- 6.5Door_cmd
 
 -- Never send any command during the period when the cabin is moving. 
 -- If it's pending_here and the door is closed, when open door button is pressed, send the open command to reopen the door. 
