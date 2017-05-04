@@ -1,0 +1,238 @@
+-- Elevator Controller                                               
+
+-- This SMV program describes an elevator system for a 3-floors building. It includes modules for request buttons, cabin, door and controller.
+
+
+-- Button                                                                
+
+-- There are request button for each floor. Its possible state can be pressed or unpressed, initial state is unpressed. When pressed by users if controller reset it, the state will transfer to unpressed, or it will remain unpressed. 
+
+MODULE Button(reset)
+VAR 
+    pressed : boolean;
+ASSIGN
+    init(pressed) := FALSE;
+    next(pressed) := case 
+        pressed & reset  : FALSE;
+        pressed & !reset : TRUE;
+        !pressed         : {FALSE,TRUE};
+    esac;
+
+  -- REQ: The controller must not reset a button that is not pressed.
+  INVARSPEC (reset -> pressed)
+-- specification (ctrl.reset_1 -> button_1.pressed)  is true????
+
+-- Cabin                                                                
+
+-- The elevator cabin can reach floor from 1 to 3, the first variable should be floor. Each floor has one or two direction of moving up and down, the second variable should be direction. The elevator receives command from stop, go up and go down.
+
+MODULE Cabin(move_cmd)
+VAR 
+    floor     : {1,2,3};
+    direction : {standing, moving_up, moving_down};
+
+ASSIGN
+    init(direction) := standing;
+    next(direction) := case
+        move_cmd = stop      : standing;
+        move_cmd = move_up   : moving_up;
+        move_cmd = move_down : moving_down;
+        move_cmd = nop       : direction;
+    esac;
+
+    next(floor) := case
+        next(direction) = standing    : floor;
+        next(direction) = moving_up   : case 
+                                      floor = 3 : 3;
+                                      TRUE      : floor + 1; 
+                                      esac;
+        next(direction) = moving_down : case 
+                                      floor = 1 : 1;
+                                      TRUE      : floor - 1; 
+                                      esac;
+    esac;
+
+  -- REQ: The controller can issue a stop command only if the direction is up or down.
+--check_ltlspec -p 'ctrl.move_cmd = stop -> cabin.direction in moving_up union moving_down'
+-- specification (ctrl.move_cmd = stop -> cabin.direction in moving_up union moving_down)  is true
+
+  -- REQ: The controller can issue a move command only if the direction is standing.
+--check_ltlspec -p 'ctrl.move_cmd in move_up union move_down -> cabin.direction = standing'
+-- specification (ctrl.move_cmd in move_up union move_down -> cabin.direction = standing)  is true
+
+  -- REQ: The cabin can move up only if the floor is not 3.
+--check_ltlspec -p 'cabin.floor = 3 -> cabin.direction != moving_up'
+-- specification (cabin.floor = 3 -> cabin.direction != moving_up)  is true
+
+  -- REQ: The cabin can move down only if the floor is not 1.
+--check_ltlspec -p 'cabin.floor = 1 -> cabin.direction != moving_down'
+-- specification (cabin.floor = 1 -> cabin.direction != moving_down)  is true
+
+
+-- Door                                                                 
+
+-- The door of the elevator cabin can be open or closed. After it received the door command, it will change its status.
+
+MODULE Door(door_cmd)
+VAR
+    status : { open, closed };
+
+ASSIGN
+    next(status) := case
+        door_cmd = open      : open;
+        door_cmd = close     : closed;
+        door_cmd = nop       : status;
+    esac;
+
+  -- REQ: The controller can issue an open command only if the door is closed.
+--check_ltlspec -p 'ctrl.door_cmd = open   ->  door.status = closed'
+-- specification (ctrl.door_cmd = open -> door.status = closed)  is true
+
+  -- REQ: The controller can issue a close command only if the door is open.
+--check_ltlspec -p 'ctrl.door_cmd = close   ->  door.status = open'  
+-- specification (ctrl.door_cmd = close -> door.status = open)  is true
+
+
+
+-- CONTROLLER                                                          
+
+-- The controller sends move command and door command to elevator cabin, and the status of the three buttons. 
+
+MODULE CTRL(floor, dir, door, pressed_1, pressed_2, pressed_3)
+VAR 
+    move_cmd : {move_up, move_down, stop, nop};
+    door_cmd : {open, close, nop};
+    reset_1 : boolean;
+    reset_2 : boolean;
+    reset_3 : boolean;
+
+-- After one button is pressed, the cabin arrives at the certain floor and the door is open, the button will be reset.
+
+ASSIGN
+    reset_1 := (pressed_1 & floor = 1 & door = open);
+    reset_2 := (pressed_2 & floor = 2 & door = open);
+    reset_3 := (pressed_3 & floor = 3 & door = open);
+
+-- Define if there is pending requests at the current floor as pending_here, pending_up and pending_down. Never send any command during the period when the cabin is moving. If it's pending_here and the door is closed, send the open command to the door. If the pending request if up or down and the door is open, send the close command to the door.Otherwise do nothing.
+
+DEFINE
+    pending_here := (floor = 1 & pressed_1) | (floor = 2 & pressed_2) | (floor = 3 & pressed_3);   
+
+    pending_up   := (floor = 1 & ( pressed_2 | pressed_3)) |
+                    (floor = 2 & (             pressed_3)) ;
+
+    pending_down := (floor = 3 & ( pressed_1 | pressed_2             )) |
+                    (floor = 2 & ( pressed_1                         )) ;
+
+ASSIGN 
+    door_cmd := case
+        dir != standing              : nop;
+        pending_here & door = closed : open;
+        pending_up   & door = open   : close;
+        pending_down & door = open   : close;
+        TRUE                         : nop;
+    esac;
+
+-- Variable "last_dir" records the last movement direction of the cabin.
+VAR 
+    last_dir : {moving_up,moving_down};
+ASSIGN 
+    next(last_dir) := case
+        dir = standing : last_dir;
+        TRUE           : dir;
+    esac;
+
+  -- * If the door is open, do not send move commands to the cabin.
+  -- * If there is a pending request at the current floor
+  --   and the cabin is moving, stop it.
+  -- * If there are pending requests both at higher and at lower floors,
+  --   keep moving in "last_dir".
+  -- * If there are pending requests at higher (lower) floors,
+  --   move up (down).
+  -- * Otherwise, do not send commands to the cabin.
+  ASSIGN
+    move_cmd :=
+      case
+        door = open               : nop;
+        pending_here              : case 
+                                      dir != standing : stop;
+                                      TRUE            : nop;
+                                    esac;
+        pending_up & pending_down : case
+                                      dir != standing        : nop;
+                                      last_dir = moving_up   : move_up;
+                                      last_dir = moving_down : move_down;
+                                    esac;
+        pending_up                : case
+                                      dir != standing      : nop;
+                                      TRUE                 : move_up;
+                                    esac;
+        pending_down              : case
+                                      dir != standing      : nop;
+                                      TRUE                 : move_down;
+                                    esac;
+        TRUE                      : nop;
+      esac;
+
+
+
+---------------------------------------------------------------------------
+-- MAIN                                                                  --
+---------------------------------------------------------------------------
+
+-- The main module shows the connection between modules.
+
+MODULE main
+  VAR 
+    cabin : Cabin(ctrl.move_cmd);
+    door  : Door(ctrl.door_cmd);
+    button_1 : Button(ctrl.reset_1);
+    button_2 : Button(ctrl.reset_2);
+    button_3 : Button(ctrl.reset_3);
+    ctrl : CTRL(cabin.floor, cabin.direction, door.status,
+                button_1.pressed, button_2.pressed, button_3.pressed);
+
+
+
+---------------------------------------------------------------------------
+-- REQUIREMENTS                                                          --
+---------------------------------------------------------------------------
+
+  -- The controller must satisfy the following requirements.
+
+  -- REQ: No button can reach a state where it remains pressed forever.
+  SPEC AG AF ! button_1.pressed
+-- specification !button_3.pressed  is true
+  SPEC AG AF ! button_2.pressed
+  SPEC AG AF ! button_3.pressed
+
+  -- REQ: No pressed button can be reset until the cabin stops at the
+  --      corresponding floor and opens the door.
+  SPEC AG (button_1.pressed -> 
+    A[button_1.pressed U (cabin.floor = 1 & door.status = open)])
+-- specification (button_1.pressed -> (button_1.pressed U (cabin.floor = 1 & door.doorstatus = open)))  is true
+  SPEC AG (button_2.pressed -> 
+    A[button_2.pressed U (cabin.floor = 2 & door.status = open)])
+  SPEC AG (button_3.pressed -> 
+    A[button_3.pressed U (cabin.floor = 3 & door.status = open)])
+
+  -- REQ: A button must be reset as soon as the cabin stops at the
+  --      corresponding floor with the door open.
+  SPEC AG ((button_1.pressed & cabin.floor = 1 & door.status = open) ->
+    AX ! button_1.pressed)
+-- specification (((button_1.pressed & cabin.floor = 1) & door.doorstatus = open) -> !button_1.pressed)  is true
+  SPEC AG ((button_2.pressed & cabin.floor = 2 & door.status = open) ->
+    AX ! button_2.pressed)
+  SPEC AG ((button_3.pressed & cabin.floor = 3 & door.status = open) ->
+    AX ! button_3.pressed)
+ 
+  -- REQ: The cabin can move only when the door is closed.
+  INVARSPEC (door.status = open -> cabin.direction = standing)
+
+  -- REQ: If no button is pressed, the controller must issue no commands
+  --      and the cabin must be standing.
+  INVARSPEC (((! button_1.pressed) & (! button_2.pressed) & (! button_3.pressed) )
+                   -> (ctrl.door_cmd = nop & ctrl.move_cmd = nop &
+                       cabin.direction = standing))
+---------------------------------------------------------------------------
+

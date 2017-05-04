@@ -1,0 +1,202 @@
+-- Elevator Controller                                               
+
+-- This SMV program describes an elevator system for a 3-floors building. It includes modules for request buttons, cabin, door and controller.
+
+
+-- 1.Button                                                                
+
+-- There are request button for each floor. Its possible state can be pressed or unpressed, initial state is unpressed. When pressed by users if controller reset it, the state will transfer to unpressed, or it will remain unpressed. 
+
+MODULE Button(reset_cmd)
+VAR 
+    pressed : boolean;
+ASSIGN
+    init(pressed) := FALSE;
+    next(pressed) := case 
+        pressed & reset_cmd  : FALSE;
+        pressed & !reset_cmd : TRUE;
+        !pressed             : {FALSE,TRUE};
+    esac;
+
+  -- REQ: The controller must not reset a button that is not pressed.
+  INVARSPEC (reset -> pressed)
+-- specification (ctrl.reset_1 -> button_1.pressed)  is true????
+
+-- 2.Cabin                                                                
+
+-- The elevator cabin can reach floor from 1 to 3, the first variable should be floor. Each floor has one or two direction of moving up and down, the second variable should be direction. The elevator receives command from stop, go up and go down.
+
+MODULE Cabin(move_cmd)
+VAR 
+    floor     : {1,2,3};
+    direction : {standing, moving_up, moving_down};
+
+ASSIGN
+    init(direction) := standing;
+    next(direction) := case
+        move_cmd = stop      : standing;
+        move_cmd = move_up   : moving_up;
+        move_cmd = move_down : moving_down;
+        move_cmd = none      : direction;
+    esac;
+
+    next(floor) := case
+        next(direction) = standing    : floor;
+        next(direction) = moving_up   : case 
+                                      floor = 3 : 3;
+                                      TRUE      : floor + 1; 
+                                      esac;
+        next(direction) = moving_down : case 
+                                      floor = 1 : 1;
+                                      TRUE      : floor - 1; 
+                                      esac;
+    esac;
+
+  -- REQ: The controller can issue a stop command only if the direction is up or down.
+--check_ltlspec -p 'ctrl.move_cmd = stop -> cabin.direction in moving_up union moving_down'
+-- specification (ctrl.move_cmd = stop -> cabin.direction in moving_up union moving_down)  is true
+
+  -- REQ: The controller can issue a move command only if the direction is standing.
+--check_ltlspec -p 'ctrl.move_cmd in move_up union move_down -> cabin.direction = standing'
+-- specification (ctrl.move_cmd in move_up union move_down -> cabin.direction = standing)  is true
+
+  -- REQ: The cabin can move up only if the floor is not 3.
+--check_ltlspec -p 'cabin.floor = 3 -> cabin.direction != moving_up'
+-- specification (cabin.floor = 3 -> cabin.direction != moving_up)  is true
+
+  -- REQ: The cabin can move down only if the floor is not 1.
+--check_ltlspec -p 'cabin.floor = 1 -> cabin.direction != moving_down'
+-- specification (cabin.floor = 1 -> cabin.direction != moving_down)  is true
+
+
+-- 3.Door                                                                 
+
+-- The door of the elevator cabin can be open or closed. After it received the door command, it will change its status.
+
+MODULE Door(door_cmd)
+VAR
+    doorstatus : {open, closed};
+
+ASSIGN
+    next(doorstatus) := case
+        door_cmd = open      : open;
+        door_cmd = close     : closed;
+        door_cmd = none      : doorstatus;
+    esac;
+
+  -- REQ: The controller can issue an open command only if the door is closed.
+--check_ltlspec -p 'ctrl.door_cmd = open   ->  door.status = closed'
+-- specification (ctrl.door_cmd = open -> door.status = closed)  is true
+
+  -- REQ: The controller can issue a close command only if the door is open.
+--check_ltlspec -p 'ctrl.door_cmd = close   ->  door.status = open'  
+-- specification (ctrl.door_cmd = close -> door.status = open)  is true
+
+
+
+-- 4.CONTROLLER                                                          
+
+-- The controller sends press command, move command and door command to elevator cabin, and it includes all the the attributes of the three classes button, carbin and door. 
+
+MODULE CTRL(pressed_1, pressed_2, pressed_3, floor, dir, door)
+VAR 
+    move_cmd : {move_up, move_down, stop, none};
+    door_cmd : {open, close, none};
+    reset_cmd1 : boolean;
+    reset_cmd2 : boolean;
+    reset_cmd3 : boolean;
+
+-- 4.1Reset_cmd
+
+-- After one button is pressed, the cabin arrives at the certain floor and the door is open, the button will be reset.
+
+ASSIGN
+
+    reset_cmd1 := (pressed_1 & floor = 1 & door = open);
+    reset_cmd2 := (pressed_2 & floor = 2 & door = open);
+    reset_cmd3 := (pressed_3 & floor = 3 & door = open);
+
+-- 4.3Door_cmd
+
+-- Define if there is pending requests with floor and pressed attributes at the current floor as pending_here, pending_up and pending_down. Never send any command during the period when the cabin is moving. If it's pending_here and the door is closed, send the open command to the door. If the pending request if up or down and the door is open, send the close command to the door.Otherwise do nothing.
+
+DEFINE
+    pending_here := (floor = 1 & pressed_1) | (floor = 2 & pressed_2) | (floor = 3 & pressed_3);   
+
+    pending_up   := (floor = 1 & ( pressed_2 | pressed_3)) |
+                    (floor = 2 & (             pressed_3)) ;
+
+    pending_down := (floor = 3 & ( pressed_1 | pressed_2)) |
+                    (floor = 2 & ( pressed_1            )) ;
+
+ASSIGN 
+    door_cmd := case
+        direction != standing        : none;
+        pending_here & door = closed : open;
+        pending_up   & door = open   : close;
+        pending_down & door = open   : close;
+        TRUE                         : none;
+    esac;
+
+-- 4.2Move_cmd
+
+-- Records the last movement direction of the cabin. It remember the last movement direction when the cabin is stopped. This variable is useful to judge whether to go up and down when thers're both go up and down pending move command.
+
+VAR 
+    last_direction : {moving_up,moving_down};
+ASSIGN 
+    next(last_direction) := case
+        direction = standing : last_direction;
+        TRUE                 : direction;
+    esac;
+
+  -- If the door is open, never send move command.
+  -- If the door is closed:
+    -- If there is pending_here request and the cabin is moving, stop it. Or if cabin is standing, do nothing.
+    -- If there are pending requests both at higher and at lower floors and the cabin is moving, keep that status. Or it's not moving, keep moving by recalling the last_direction.
+    -- If there are pending requests at higher (lower) floors and the cabin is moving, keep that status. Otherwise, send move up (down) command to cabin.
+    -- If no pending request, do nothing.
+
+ASSIGN
+    move_cmd := case
+        door = open               : none;
+        pending_here              : case 
+                                      direction != standing        : stop;
+                                      TRUE                         : none;
+                                    esac;
+        pending_up & pending_down : case
+                                      diretion != standing         : none;
+                                      last_direction = moving_up   : move_up;
+                                      last_direction = moving_down : move_down;
+                                    esac;
+        pending_up                : case
+                                      direction != standing        : none;
+                                      TRUE                         : move_up;
+                                    esac;
+        pending_down              : case
+                                      direction != standing        : none;
+                                      TRUE                         : move_down;
+                                    esac;
+        TRUE                      : none;
+      esac;
+
+
+
+
+-- MAIN                                                                  
+
+-- The main module combines all the classes and methods.
+
+MODULE main
+  VAR 
+    cabin : Cabin(ctrl.move_cmd);
+    door  : Door(ctrl.door_cmd);
+    button_1 : Button(ctrl.reset_cmd1);
+    button_2 : Button(ctrl.reset_cmd2);
+    button_3 : Button(ctrl.reset_cmd3);
+    ctrl : CTRL(button_1.pressed, button_2.pressed, button_3.pressed, cabin.floor, cabin.direction, door.doorstatus);
+
+
+
+
+

@@ -1,0 +1,28 @@
+--cabin
+
+MODULE main
+
+VAR
+    floor : {1,2,3};
+    direction : {standing,movingup,movingdown};
+    move : {stop,go_up,go_down,none}
+    
+ASSIGN
+    init(direction) := standing;
+    next(direction) := case
+                  move = stop : standing;
+                  move = go_up : movingup;
+                  move = go_down : movingdown;
+                  move = none : standing;
+                esac;
+    next(floor) := case
+                next(direction) = standing : floor;
+                next(direction) = movingup : case
+                                             floor = 3 : 3;
+                                             floor < 3 : floor + 1;
+                                             esac;
+                next(direction) = movingdown : case
+                                             floor = 1 : 1;
+                                             floor > 1 : floor - 1;
+                                             esac;
+              esac;

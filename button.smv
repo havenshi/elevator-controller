@@ -1,0 +1,16 @@
+--button
+
+MODULE main
+
+VAR
+    pressed : boolean;
+    reset : boolean;
+
+ASSIGN
+    init(pressed) := FALSE;
+    next(pressed) := case
+                  pressed & reset : FALSE;
+                  pressed & !reset : TRUE;
+                  !pressed : {FALSE,TRUE};
+                esac;
+

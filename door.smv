@@ -1,0 +1,15 @@
+--door
+
+MODULE main
+
+VAR
+    status : {open,closed};
+    door_cmd : {open,close,none}
+
+ASSIGN
+    next(status) := case
+                  door_cmd = open: open;
+                  door_cmd = close: closed;
+                  door_cmd = none : status;
+                esac;
+
