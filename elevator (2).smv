@@ -1,0 +1,68 @@
+MODULE main
+
+VAR
+button1: boolean;
+button2: boolean; 
+button3: boolean;
+upF1: boolean;
+upF2: boolean;
+downF2: boolean;
+downF3: boolean;
+buttonOpen: boolean;
+buttonClose: boolean;
+move_cmd : {stop, move_up, move_down, nop};
+
+floor  : {1,2,3};
+direction : {standing, moving_up, moving_down};
+
+
+ASSIGN
+floor := 
+case
+	button1 = TRUE : 1;
+	button2 = TRUE : 2;
+	button3 = TRUE : 3;
+	upF1 = TRUE : 1;
+	upF2 = TRUE : 3;
+	downF2 = TRUE : 1;
+	downF3 = TRUE & button2 = TRUE : 2;
+	downF3 = TRUE & button1 = TRUE : 1;
+TRUE : 1;
+esac;
+
+
+
+
+
+ASSIGN
+init(move_cmd) := nop;
+init(direction) := standing;
+next(direction) := 
+
+case
+floor != 3 & move_cmd= move_up  : standing ;                                        
+floor != 1 & move_cmd = move_down : standing;
+move_cmd = stop : standing;
+move_cmd = move_up   : moving_up;
+move_cmd = move_down : moving_down;
+move_cmd = nop       : direction;
+esac;
+
+
+                                          
+      		
+
+
+------- code to check that the door is closed when the elevator is moving-----
+VAR 
+	door : {open, closed};
+
+ASSIGN
+	door := 
+		case 
+			buttonOpen = TRUE & direction = standing : open;
+			buttonClose = TRUE | buttonOpen = TRUE | direction = moving_up: closed;
+			buttonOpen = FALSE | buttonClose = TRUE : closed;
+TRUE : open;
+
+			esac;
