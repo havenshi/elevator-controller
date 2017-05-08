@@ -1,0 +1,80 @@
+MODULE main
+
+VAR
+button1: boolean;
+button2: boolean; 
+button3: boolean;
+upF1: boolean;
+upF2: boolean;
+downF2: boolean;
+downF3: boolean;
+buttonOpen: boolean;
+buttonClose: boolean;
+move_cmd : {stop, move_up, move_down, nop};
+floor  : {1,2,3};
+direction : {standing, moving_up, moving_down};
+door : {open, closed};
+
+ASSIGN
+    init(direction) := standing;
+    init(move_cmd) := stop;
+    init(button1) := FALSE;
+    init(button2) := FALSE;
+    init(button3) := FALSE;
+    init(upF1) := FALSE;
+    init(upF2) := FALSE;
+    init(downF2) := FALSE;
+    init(downF3) := FALSE;
+    init(buttonOpen) := FALSE;
+    init(buttonClose) := FALSE;
+    next(buttonOpen) := case
+        buttonOpen = TRUE & buttonClose =FALSE : TRUE;
+        TRUE : FALSE;
+    esac;
+    next(buttonClose) := case
+        buttonOpen = FALSE & buttonClose =TRUE : TRUE;
+        TRUE : FALSE;
+    esac;
+    next(button1) := case
+        button1 = TRUE & button2 = FALSE & button3 = FALSE : TRUE;
+        TRUE : FALSE;
+    esac;
+    next(button2):= case
+        button1 = FALSE & button2 = TRUE & button3 = FALSE : TRUE;
+        TRUE : FALSE;
+    esac;
+    next(button3):= case
+        button1 = FALSE & button2 = FALSE & button3 = TRUE : TRUE;
+        TRUE : FALSE;
+    esac;
+    next(direction) := case
+        move_cmd = stop      : standing;
+        move_cmd = move_up   : moving_up;
+        move_cmd = move_down : moving_down;
+        move_cmd = nop       : direction;
+    esac;
+    next(floor) := case
+        button1 | upF1 : 1;
+        button2 | upF2 | downF2 : 2;
+        button3 | downF3 : 3;
+        TRUE : floor;
+    esac;
+    next(move_cmd) := case
+        door = open         : nop;
+        (floor = 1 & button1) | (floor = 2 & button2) | (floor = 3 & button3) : stop;   
+        (floor = 1 & ( button2 | button3 | upF2 | downF2 | downF3)) | (floor = 2 & (button3 | downF3)) : move_up;
+        (floor = 3 & ( button1 | button2 | upF2 | downF2 | upF1)) | (floor = 2 & (button1 | upF1)) : move_down;
+        TRUE : nop;
+        esac;
+    next(door) := case
+        direction != standing                     : closed;
+        move_cmd = stop & door = closed & buttonOpen : open;
+        move_cmd = stop & door = open & buttonClose : closed;
+        (move_cmd = move_up | move_cmd = move_down) & door = open   : closed;
+        TRUE:door;
+        esac;
+
+
+
+
+

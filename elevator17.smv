@@ -1,0 +1,138 @@
+MODULE main
+
+VAR
+button1: boolean;
+button2: boolean; 
+button3: boolean;
+upF1: boolean;
+upF2: boolean;
+downF2: boolean;
+downF3: boolean;
+buttonOpen: boolean;
+buttonClose: boolean;
+
+floor  : {1,2,3};
+direction : {standing, moving_up, moving_down};
+door : {open, closed};
+last_dir : {moving_up,moving_down};
+move_cmd : {stop, move_up, move_down, nop};
+door_cmd : {open,close, nop};
+
+
+DEFINE
+    pending_here := (floor = 1 & (button1 | upF1)) | (floor = 2 & (button2 | upF2 | downF2)) | (floor = 3 & (button3 | downF3));   
+    pending_up := (floor = 1 & ( button2 | button3 | upF2 | downF2 | downF3)) | (floor = 2 & (button3 | downF3)) ;
+    pending_down :=  (floor = 3 & ( button1 | button2 | upF2 | downF2 | upF1)) | (floor = 2 & (button1 | upF1)) ;
+
+ASSIGN
+    init(direction) := standing;
+    init(move_cmd) := stop;
+
+    next(button1)                := case 
+        button1 & floor = 1 & door = open  : FALSE;
+        TRUE                 : {FALSE,TRUE};
+    esac;
+    next(button2)                := case 
+        button2 & floor = 2 & door = open  : FALSE;
+        TRUE                 : {FALSE,TRUE};
+    esac;
+    next(button3)                := case 
+        button3 & floor = 3 & door = open  : FALSE;
+        TRUE                 : {FALSE,TRUE};
+    esac;
+
+
+    next(upF1)                := case 
+        upF1 & (floor = 2 | floor = 3) & door = open  : FALSE;
+        TRUE                 : {FALSE,TRUE};
+    esac;
+    next(upF2)                := case 
+        upF2 & floor = 3 & door = open  : FALSE;
+        TRUE                 : {FALSE,TRUE};
+    esac;
+    next(downF2)                := case 
+        downF2 & (floor = 1) & door = open  : FALSE;
+        TRUE                 : {FALSE,TRUE};
+    esac;
+    next(downF3)                := case 
+        downF3 & (floor = 1 | floor = 2) & door = open  : FALSE;
+        TRUE                 : {FALSE,TRUE};
+    esac;
+
+    next(buttonOpen):= case
+        buttonOpen & door = open : FALSE;
+        TRUE : buttonOpen;
+    esac;
+
+
+    next(buttonClose):= case
+       buttonClose & door = closed : FALSE;
+        TRUE : buttonClose;
+    esac;
+
+
+    next(door) := case
+        door = closed & door_cmd = open      : open;
+        door = open & door_cmd = close     : closed;
+        TRUE      : door;
+    esac;
+    next(door_cmd) := case
+        direction != standing                     : close;
+        ((floor=1 & upF1) | (floor=2 & (upF2 | downF2)) |(floor=3 & downF3)) & door = closed:open;
+        pending_here & door = closed & buttonOpen : open;
+        pending_here & door = open & buttonClose : close;
+        (pending_up | pending_down) & door = open   : close;
+        TRUE:nop;
+        esac;
+
+    next(direction) := case
+        move_cmd = stop      : standing;
+        move_cmd = move_up   : moving_up;
+        move_cmd = move_down : moving_down;
+        move_cmd = nop       : direction;
+    esac;
+
+    next(floor) := case
+        next(direction) = standing    : floor;
+        next(direction) = moving_up   : case 
+                                      floor = 3 : 3;
+                                      TRUE      : floor + 1; 
+                                      esac;
+        next(direction) = moving_down : case 
+                                      floor = 1 : 1;
+                                      TRUE      : floor - 1; 
+    				esac;
+       esac;
+
+    next(last_dir) := case
+        direction = standing : last_dir;
+        TRUE                 : direction;
+    esac;
+
+    next(move_cmd) := case
+        door = open         : nop;
+        pending_here      : case 
+                                  direction != standing  : stop;
+                                  TRUE                   : nop;
+                                  esac;
+        pending_up & pending_down : case
+                                  direction != standing  : nop;
+                                  last_dir = moving_up   : move_up;
+                                  last_dir = moving_down : move_down;
+                                  esac;
+        pending_up        : case
+                                  direction != standing  : nop;
+                                  TRUE                   : move_up;
+                                  esac;
+        pending_down      : case
+                                  direction != standing  : nop;
+                                  TRUE                   : move_down;
+                                  esac;
+        TRUE                      : nop;
+    esac;
+
+
+
+
+
+
